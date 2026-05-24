@@ -1,156 +1,216 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
-
-from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, RegisterEventHandler, DeclareLaunchArgument, ExecuteProcess
-from launch.event_handlers import OnProcessExit
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
-
-from launch_ros.actions import Node
-
 import xacro
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    EmitEvent,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    RegisterEventHandler,
+)
+from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+from launch_ros.actions import Node
+from webots_ros2_driver.wait_for_controller_connection import WaitForControllerConnection
+from webots_ros2_driver.webots_controller import WebotsController
+from webots_ros2_driver.webots_launcher import Ros2SupervisorLauncher, WebotsLauncher
 
 
-def generate_launch_description():
+def shutdown_on_driver_failure(event, context):
+    if context.is_shutdown or event.returncode == 0:
+        return []
+    return [EmitEvent(event=Shutdown(reason="Webots driver exited unexpectedly"))]
+
+
+def launch_setup(context, *args, **kwargs):
+    del args, kwargs
+
     package_name = "open_mower_next"
+    share_directory = get_package_share_directory(package_name)
 
-    xacro_file = os.path.join(get_package_share_directory(package_name), 'description/robot.urdf.xacro')
-    robot_description_config = xacro.process_file(xacro_file, mappings={
-        'use_ros2_control': '0',
-        'use_sim_time': '1'
-    }).toxml()
+    world = LaunchConfiguration("world").perform(context)
+    mode = LaunchConfiguration("mode").perform(context)
+    gui = LaunchConfiguration("gui").perform(context)
+    webots_stream = LaunchConfiguration("webots_stream").perform(context).lower() in [
+        "true",
+        "1",
+        "yes",
+    ]
+    webots_port = LaunchConfiguration("webots_port").perform(context)
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    enable_foxglove = LaunchConfiguration("enable_foxglove")
+    foxglove_address = LaunchConfiguration("foxglove_address")
+    foxglove_port = LaunchConfiguration("foxglove_port")
 
-    # Create a robot_state_publisher node
-    params = {'robot_description': robot_description_config, 'use_sim_time': True}
+    xacro_file = os.path.join(share_directory, "description", "robot.urdf.xacro")
+    robot_description_config = xacro.process_file(
+        xacro_file,
+        mappings={
+            "use_ros2_control": "0",
+            "sim_mode": "true",
+        },
+    ).toxml()
+
     node_robot_state_publisher = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        output='screen',
-        parameters=[params]
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="screen",
+        parameters=[{"robot_description": robot_description_config, "use_sim_time": use_sim_time}],
     )
 
-    twist_mux_params = os.path.join(get_package_share_directory(package_name), 'config', 'twist_mux.yaml')
+    twist_mux_params = os.path.join(share_directory, "config", "twist_mux.yaml")
     twist_mux = Node(
         package="twist_mux",
         executable="twist_mux",
-        parameters=[twist_mux_params, {'use_sim_time': True}],
-        remappings=[('/cmd_vel_out', '/diff_drive_base_controller/cmd_vel')],
+        parameters=[twist_mux_params, {"use_sim_time": use_sim_time}],
+        remappings=[("/cmd_vel_out", "/diff_drive_base_controller/cmd_vel")],
     )
 
-    gz_spawn_entity = Node(
-        package='ros_gz_sim',
-        executable='create',
-        output='screen',
-        arguments=['-topic', 'robot_description',
-                   '-world', 'map',
-                   '-name', 'openmower',
-                   '-z', '0.2',
-                   '-Y', '120.0'],
+    webots = WebotsLauncher(
+        world=os.path.join(share_directory, "worlds", world),
+        mode=mode,
+        gui=gui,
+        stream=webots_stream,
+        port=webots_port,
     )
-    
-    bridge = Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        arguments=[
-            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-            '/gps/fix@sensor_msgs/msg/NavSatFix[gz.msgs.NavSat',
-            '/imu/data_raw@sensor_msgs/msg/Imu[gz.msgs.IMU',
-            '/model/openmower/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
-            '/model/docking_station/pose@geometry_msgs/msg/Pose[gz.msgs.Pose',
+    webots_supervisor = Ros2SupervisorLauncher(respawn=False)
+
+    controller_params_file = os.path.join(share_directory, "config", "controllers.yaml")
+    webots_robot_description = os.path.join(share_directory, "resource", "openmower_webots.urdf")
+    webots_driver = WebotsController(
+        robot_name="openmower",
+        parameters=[
+            {
+                "robot_description": webots_robot_description,
+                "use_sim_time": use_sim_time,
+                "set_robot_state_publisher": False,
+            },
+            controller_params_file,
         ],
-        output='screen'
+        respawn=False,
     )
 
-    load_joint_state_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'joint_state_broadcaster'],
-        output='screen'
+    controller_manager_timeout = ["--controller-manager-timeout", "50"]
+    load_joint_state_controller = Node(
+        package="controller_manager",
+        executable="spawner",
+        output="screen",
+        arguments=["joint_state_broadcaster"] + controller_manager_timeout,
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+    load_diff_controller = Node(
+        package="controller_manager",
+        executable="spawner",
+        output="screen",
+        arguments=["diff_drive_base_controller"] + controller_manager_timeout,
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+    load_mower_controller = Node(
+        package="controller_manager",
+        executable="spawner",
+        output="screen",
+        arguments=["mower_controller"] + controller_manager_timeout,
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+    controller_spawners = [load_joint_state_controller, load_diff_controller, load_mower_controller]
+
+    wait_for_webots_driver = WaitForControllerConnection(
+        target_driver=webots_driver,
+        nodes_to_start=controller_spawners,
     )
 
-    load_diff_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'diff_drive_base_controller'],
-        output='screen'
-    )
-
-    load_mower_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'mower_controller'],
-        output='screen'
-    )
-
-    # Simulation helper node. This node is used to publish power/charging data base on a dock position.
+    # Simulation helper node publishes the hardware-facing power topics.
     sim_node = Node(
-        package='open_mower_next',
-        executable='sim_node',
-        output='screen',
-        parameters=[{'use_sim_time': True}]
+        package="open_mower_next",
+        executable="sim_node",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": use_sim_time,
+                "docking_station_frame": "map",
+                "charging_port_frame": "charging_port",
+                "docking_station_contact_x": 1.82,
+                "docking_station_contact_y": 1.5,
+                "docking_station_contact_z": 0.06,
+                "docking_station_contact_yaw": 0.0,
+            }
+        ],
     )
 
     localization = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([get_package_share_directory(package_name), '/launch/localization.launch.py']),
+        PythonLaunchDescriptionSource(os.path.join(share_directory, "launch", "localization.launch.py")),
         launch_arguments={
-            'use_sim_time': 'true',
-            'autostart': 'true',
+            "use_sim_time": use_sim_time,
+            "autostart": "true",
         }.items(),
     )
 
     nav2 = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([get_package_share_directory(package_name), '/launch/nav2.launch.py']),
+        PythonLaunchDescriptionSource(os.path.join(share_directory, "launch", "nav2.launch.py")),
         launch_arguments={
-            'use_sim_time': 'true',
-            # 'map': os.path.join(get_package_share_directory(package_name), 'maps', 'world.yaml'),
-            'autostart': 'true',
-            'params_file': os.path.join(get_package_share_directory(package_name), 'config', 'nav2_params.yaml'),
+            "use_sim_time": use_sim_time,
+            "autostart": "true",
+            "params_file": os.path.join(share_directory, "config", "nav2_params.yaml"),
         }.items(),
     )
 
     foxglove_bridge = IncludeLaunchDescription(
         XMLLaunchDescriptionSource(
-            [get_package_share_directory("foxglove_bridge"), '/launch/foxglove_bridge_launch.xml']),
+            os.path.join(get_package_share_directory("foxglove_bridge"), "launch", "foxglove_bridge_launch.xml")
+        ),
         launch_arguments={
-            'include_hidden': 'true',
+            "address": foxglove_address,
+            "port": foxglove_port,
+            "include_hidden": "true",
+            "use_sim_time": use_sim_time,
         }.items(),
+        condition=IfCondition(enable_foxglove),
     )
 
-    world_path = os.path.join(get_package_share_directory(package_name), 'worlds', 'empty.sdf')
-
-    return LaunchDescription([
-        bridge,
+    return [
+        webots,
+        webots_supervisor,
         node_robot_state_publisher,
         twist_mux,
-        # Launch gazebo environment
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                [os.path.join(get_package_share_directory('ros_gz_sim'),
-                              'launch', 'gz_sim.launch.py')]),
-            launch_arguments={
-                'gz_args': '-r -v 6 {}'.format(world_path),
-            }.items()),
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=gz_spawn_entity,
-                on_exit=[load_joint_state_controller],
-            )
-        ),
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=load_joint_state_controller,
-                on_exit=[load_diff_controller],
-            )
-        ),
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=load_joint_state_controller,
-                on_exit=[load_mower_controller],
-            )
-        ),
-        gz_spawn_entity,
+        webots_driver,
+        wait_for_webots_driver,
         sim_node,
         localization,
         nav2,
         foxglove_bridge,
-    ])
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=webots,
+                on_exit=[EmitEvent(event=Shutdown())],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=webots_driver,
+                on_exit=shutdown_on_driver_failure,
+            )
+        ),
+    ]
+
+
+def generate_launch_description():
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument("world", default_value="openmower.wbt"),
+            DeclareLaunchArgument("mode", default_value="realtime"),
+            DeclareLaunchArgument("gui", default_value="true"),
+            DeclareLaunchArgument("webots_stream", default_value="true"),
+            DeclareLaunchArgument("webots_port", default_value="1234"),
+            DeclareLaunchArgument("use_sim_time", default_value="true"),
+            DeclareLaunchArgument("enable_foxglove", default_value="false"),
+            DeclareLaunchArgument("foxglove_address", default_value="0.0.0.0"),
+            DeclareLaunchArgument("foxglove_port", default_value="8765"),
+            OpaqueFunction(function=launch_setup),
+        ]
+    )
