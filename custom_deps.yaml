@@ -3,10 +3,6 @@ repositories:
     type: git
     url: https://github.com/sbgisen/vesc.git
     version: jazzy-devel
-  micro_ros_agent:
-    type: git
-    url: https://github.com/micro-ROS/micro-ROS-Agent
-    version: jazzy
   ublox_f9p:
     type: git
     url: https://github.com/jkaflik/ublox_f9p

@@ -1,6 +1,10 @@
 #include "docking_helper/docking_helper_node.hpp"
 #include "docking_helper_node.hpp"
+#include <atomic>
+#include <algorithm>
+#include <cmath>
 #include <functional>
+#include <future>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
@@ -21,6 +25,19 @@ open_mower_next::docking_helper::DockingHelperNode::DockingHelperNode(const rclc
                                                  std::placeholders::_1, std::placeholders::_2));
 
   dock_client_ = rclcpp_action::create_client<nav2_msgs::action::DockRobot>(this, "/dock_robot");
+  navigate_client_ =
+      rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(this, "/navigate_to_pose");
+  docking_cmd_vel_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>("cmd_vel_joy", 10);
+  charger_present_sub_ = create_subscription<std_msgs::msg::Bool>(
+      "/power/charger_present", 10, [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        charger_present_.store(msg->data);
+      });
+
+  docking_linear_velocity_ = declare_parameter<double>("docking_linear_velocity", 0.08);
+  docking_angular_gain_ = declare_parameter<double>("docking_angular_gain", 1.5);
+  docking_max_angular_velocity_ = declare_parameter<double>("docking_max_angular_velocity", 0.25);
+  docking_yaw_tolerance_ = declare_parameter<double>("docking_yaw_tolerance", 0.08);
+  docking_drive_timeout_sec_ = declare_parameter<double>("docking_drive_timeout_sec", 25.0);
 
   dock_robot_nearest_server_ = rclcpp_action::create_server<DockRobotNearestAction>(
       this, "dock_robot_nearest", std::bind(&DockingHelperNode::handleDockRobotNearestGoal, this, _1, _2),
@@ -144,34 +161,173 @@ std::shared_ptr<geometry_msgs::msg::PoseStamped> open_mower_next::docking_helper
   auto pose_stamped = std::make_shared<geometry_msgs::msg::PoseStamped>();
   pose_stamped->header = station->pose.header;
   pose_stamped->pose = station->pose.pose;
-
-  geometry_msgs::msg::TransformStamped transform_stamped =
-      tf_buffer_->lookupTransform("base_link", "charging_port", tf2::TimePointZero);
-
-  double offset_distance =
-      std::sqrt(transform_stamped.transform.translation.x * transform_stamped.transform.translation.x +
-                transform_stamped.transform.translation.y * transform_stamped.transform.translation.y);
-
-  RCLCPP_INFO(get_logger(), "Calculated offset distance from base_link to charging_port: %f", offset_distance);
-
-  tf2::Quaternion q_orig, q_rot, q_new;
-  tf2::fromMsg(pose_stamped->pose.orientation, q_orig);
-  q_rot.setRPY(0.0, 0.0, M_PI);  // Rotate 180 degrees around Z
-  q_new = q_orig * q_rot;
-  q_new.normalize();
-
-  pose_stamped->pose.orientation = tf2::toMsg(q_new);
-
-  tf2::Vector3 offset(offset_distance, 0.0, 0.0);
-  tf2::Transform transform;
-  transform.setRotation(q_new);
-  tf2::Vector3 translated_offset = transform * offset;
-
-  pose_stamped->pose.position.x -= translated_offset.x();
-  pose_stamped->pose.position.y -= translated_offset.y();
-  pose_stamped->pose.position.z -= translated_offset.z();
-
   return pose_stamped;
+}
+
+bool open_mower_next::docking_helper::DockingHelperNode::navigateToApproachPose(
+    const open_mower_next::msg::DockingStation& docking_station)
+{
+  if (docking_station.approach_pose.header.frame_id.empty())
+  {
+    RCLCPP_ERROR(get_logger(), "Docking station %s has no approach pose", docking_station.name.c_str());
+    return false;
+  }
+
+  if (!navigate_client_->wait_for_action_server(std::chrono::seconds(5)))
+  {
+    RCLCPP_ERROR(get_logger(), "NavigateToPose action server not available");
+    return false;
+  }
+
+  auto goal = nav2_msgs::action::NavigateToPose::Goal();
+  goal.pose = docking_station.approach_pose;
+  goal.pose.header.stamp = this->now();
+
+  RCLCPP_INFO(get_logger(), "Navigating to docking approach pose for station: %s", docking_station.name.c_str());
+
+  auto result_promise = std::make_shared<std::promise<bool>>();
+  auto result_future = result_promise->get_future();
+  auto result_set = std::make_shared<std::atomic<bool>>(false);
+
+  auto send_goal_options =
+      rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions();
+  send_goal_options.goal_response_callback = [this, result_set, result_promise](const auto& goal_handle) {
+    if (!goal_handle)
+    {
+      RCLCPP_ERROR(get_logger(), "NavigateToPose goal to docking approach was rejected");
+      if (!result_set->exchange(true))
+      {
+        result_promise->set_value(false);
+      }
+    }
+  };
+  send_goal_options.result_callback = [this, result_set, result_promise](const auto& nav_result) {
+    const bool success = nav_result.code == rclcpp_action::ResultCode::SUCCEEDED;
+    if (success)
+    {
+      RCLCPP_INFO(get_logger(), "Reached docking approach pose");
+    }
+    else
+    {
+      RCLCPP_ERROR(get_logger(), "Failed to reach docking approach pose");
+    }
+    if (!result_set->exchange(true))
+    {
+      result_promise->set_value(success);
+    }
+  };
+
+  navigate_client_->async_send_goal(goal, send_goal_options);
+
+  if (result_future.wait_for(std::chrono::minutes(5)) != std::future_status::ready)
+  {
+    RCLCPP_ERROR(get_logger(), "Timed out while navigating to docking approach pose");
+    return false;
+  }
+
+  return result_future.get();
+}
+
+void open_mower_next::docking_helper::DockingHelperNode::publishDockingVelocity(double linear_x, double angular_z)
+{
+  geometry_msgs::msg::TwistStamped cmd;
+  cmd.header.stamp = this->now();
+  cmd.header.frame_id = "base_link";
+  cmd.twist.linear.x = linear_x;
+  cmd.twist.angular.z = angular_z;
+  docking_cmd_vel_pub_->publish(cmd);
+}
+
+void open_mower_next::docking_helper::DockingHelperNode::stopDockingVelocity()
+{
+  for (int i = 0; i < 5; ++i)
+  {
+    publishDockingVelocity(0.0, 0.0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+}
+
+bool open_mower_next::docking_helper::DockingHelperNode::driveDockingVectorUntilCharging(
+    const open_mower_next::msg::DockingStation& docking_station)
+{
+  tf2::Quaternion q;
+  tf2::fromMsg(docking_station.pose.pose.orientation, q);
+  double roll, pitch, target_yaw;
+  tf2::Matrix3x3(q).getRPY(roll, pitch, target_yaw);
+
+  RCLCPP_INFO(
+      get_logger(), "Driving docking vector until charging is detected: target yaw %.3f rad", target_yaw);
+
+  const auto start_time = this->now();
+  rclcpp::Rate rate(20.0);
+  bool edge_reached = false;
+
+  while (rclcpp::ok())
+  {
+    if (charger_present_.load())
+    {
+      stopDockingVelocity();
+      RCLCPP_INFO(get_logger(), "Charging detected during docking vector drive");
+      return true;
+    }
+
+    const auto elapsed = (this->now() - start_time).seconds();
+    if (elapsed > docking_drive_timeout_sec_)
+    {
+      stopDockingVelocity();
+      RCLCPP_ERROR(get_logger(), "Timed out while driving docking vector");
+      return false;
+    }
+
+    geometry_msgs::msg::TransformStamped robot_transform;
+    try
+    {
+      robot_transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+    }
+    catch (const tf2::TransformException& ex)
+    {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Could not transform robot pose for docking drive: %s", ex.what());
+      publishDockingVelocity(0.0, 0.0);
+      rate.sleep();
+      continue;
+    }
+
+    tf2::Quaternion robot_q;
+    tf2::fromMsg(robot_transform.transform.rotation, robot_q);
+    double robot_roll, robot_pitch, robot_yaw;
+    tf2::Matrix3x3(robot_q).getRPY(robot_roll, robot_pitch, robot_yaw);
+
+    double yaw_error = target_yaw - robot_yaw;
+    while (yaw_error > M_PI)
+      yaw_error -= 2.0 * M_PI;
+    while (yaw_error < -M_PI)
+      yaw_error += 2.0 * M_PI;
+
+    const double angular_z =
+        std::clamp(docking_angular_gain_ * yaw_error, -docking_max_angular_velocity_, docking_max_angular_velocity_);
+
+    double linear_x = 0.0;
+    if (std::abs(yaw_error) < docking_yaw_tolerance_)
+    {
+      linear_x = docking_linear_velocity_;
+    }
+
+    const double dx = robot_transform.transform.translation.x - docking_station.pose.pose.position.x;
+    const double dy = robot_transform.transform.translation.y - docking_station.pose.pose.position.y;
+    const double along_edge = dx * std::cos(target_yaw) + dy * std::sin(target_yaw);
+    if (!edge_reached && along_edge >= 0.0)
+    {
+      edge_reached = true;
+      RCLCPP_INFO(get_logger(), "Docking station edge reached, continuing until charging is detected");
+    }
+
+    publishDockingVelocity(linear_x, angular_z);
+    rate.sleep();
+  }
+
+  stopDockingVelocity();
+  return false;
 }
 
 rclcpp_action::GoalResponse open_mower_next::docking_helper::DockingHelperNode::handleDockRobotNearestGoal(
@@ -235,75 +391,35 @@ void open_mower_next::docking_helper::DockingHelperNode::executeDockingAction(
   std::shared_ptr<uint16_t> current_retries = std::make_shared<uint16_t>(0);
   std::atomic<bool> docking_active(true);
 
-  auto nav2_goal = nav2_msgs::action::DockRobot::Goal();
-  nav2_goal.use_dock_id = false;
-  nav2_goal.navigate_to_staging_pose = true;
-  nav2_goal.dock_pose.header = docking_station->pose.header;
-  nav2_goal.dock_pose.pose = dockPose(docking_station)->pose;
-
-  if (!dock_client_->wait_for_action_server(std::chrono::seconds(5)))
+  if (!navigateToApproachPose(*docking_station))
   {
-    result->code = ActionT::Result::CODE_UNKNOWN;
-    result->message = "Dock robot action server not available";
+    result->code = ActionT::Result::CODE_FAILED_TO_STAGE;
+    result->message = "Failed to reach docking approach pose";
     result->num_retries = 0;
     goal_handle->abort(result);
     return;
   }
 
-  // Send the goal
-  RCLCPP_INFO(get_logger(), "Sending docking goal to station: %s", docking_station->name.c_str());
-  auto send_goal_options = rclcpp_action::Client<nav2_msgs::action::DockRobot>::SendGoalOptions();
+  feedback->status = ActionT::Feedback::STATUS_CONTROLLING;
+  feedback->message = "Approach pose reached, starting controlled docking";
+  goal_handle->publish_feedback(feedback);
 
-  send_goal_options.feedback_callback =
-      [this, current_status,
-       current_retries](typename rclcpp_action::ClientGoalHandle<nav2_msgs::action::DockRobot>::SharedPtr,
-                        const std::shared_ptr<const nav2_msgs::action::DockRobot::Feedback> feedback) {
-        RCLCPP_INFO(get_logger(), "Docking state: %d, retries: %d", feedback->state, feedback->num_retries);
-
-        *current_status = feedback->state;
-        *current_retries = feedback->num_retries;
-      };
-
-  send_goal_options.goal_response_callback = [this](const auto& goal_handle) {
-    if (!goal_handle)
-    {
-      RCLCPP_ERROR(get_logger(), "Docking goal was rejected by server");
-    }
-    else
-    {
-      RCLCPP_INFO(get_logger(), "Docking goal accepted by server");
-    }
-  };
-
-  send_goal_options.result_callback = [this, goal_handle, result, &docking_active](const auto& nav_result) {
-    auto status = nav_result.result;
-    bool success = status->success;
-    uint16_t error_code = status->error_code;
-    uint16_t num_retries = status->num_retries;
-
+  if (driveDockingVectorUntilCharging(*docking_station))
+  {
     docking_active = false;
-
-    result->num_retries = num_retries;
-
-    if (success)
-    {
-      RCLCPP_INFO(get_logger(), "Docking action succeeded");
-      result->code = ActionT::Result::CODE_SUCCESS;
-      result->message = "Docking completed successfully";
-      goal_handle->succeed(result);
-    }
-    else
-    {
-      RCLCPP_ERROR(get_logger(), "Docking action failed with error code: %d, message: %s", error_code,
-                   status->error_msg.c_str());
-
-      result->code = error_code;
-      result->message = status->error_msg.empty() ? "Docking failed" : status->error_msg;
-      goal_handle->abort(result);
-    }
-  };
-
-  dock_client_->async_send_goal(nav2_goal, send_goal_options);
+    result->code = ActionT::Result::CODE_SUCCESS;
+    result->message = "Docking completed successfully";
+    result->num_retries = 0;
+    goal_handle->succeed(result);
+  }
+  else
+  {
+    docking_active = false;
+    result->code = ActionT::Result::CODE_FAILED_TO_CHARGE;
+    result->message = "Failed to detect charging while driving docking vector";
+    result->num_retries = 0;
+    goal_handle->abort(result);
+  }
 
   std::string status_messages[] = { "No activity",         "Navigating to staging pose", "Initial perception of dock",
                                     "Controlling to dock", "Waiting for charge",         "Retrying docking" };

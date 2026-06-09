@@ -21,3 +21,8 @@ INSTALL(TARGETS sim_node
         DESTINATION lib/${PROJECT_NAME})
 
 add_dependencies(sim_node ${PROJECT_NAME})
+
+INSTALL(PROGRAMS
+        scripts/coverage_webots_visualizer.py
+        scripts/start_coverage_run.py
+        DESTINATION lib/${PROJECT_NAME})

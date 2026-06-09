@@ -12,7 +12,7 @@ PROTO DockingStation [
     name IS name
     children [
       Pose {
-        translation 0 0 0.005
+        translation 0.4 0 0.005
         children [
           Shape {
             appearance PBRAppearance {
@@ -27,7 +27,7 @@ PROTO DockingStation [
         ]
       }
       Pose {
-        translation 0.35 0 0.075
+        translation 0.75 0 0.075
         children [
           Shape {
             appearance PBRAppearance {
@@ -42,7 +42,7 @@ PROTO DockingStation [
         ]
       }
       Pose {
-        translation 0.32 0 0.06
+        translation 0.72 0 0.06
         children [
           Shape {
             appearance PBRAppearance {
@@ -58,7 +58,7 @@ PROTO DockingStation [
         ]
       }
       Pose {
-        translation 0.15 0.2 0.02
+        translation 0.55 0.2 0.02
         children [
           Shape {
             appearance DEF RAIL_APPEARANCE PBRAppearance {
@@ -73,7 +73,7 @@ PROTO DockingStation [
         ]
       }
       Pose {
-        translation 0.15 -0.2 0.02
+        translation 0.55 -0.2 0.02
         children [
           Shape {
             appearance USE RAIL_APPEARANCE
@@ -85,25 +85,25 @@ PROTO DockingStation [
     boundingObject Group {
       children [
         Pose {
-          translation 0 0 0.005
+          translation 0.4 0 0.005
           children [
             USE DOCK_BASE
           ]
         }
         Pose {
-          translation 0.35 0 0.075
+          translation 0.75 0 0.075
           children [
             USE DOCK_CHARGER
           ]
         }
         Pose {
-          translation 0.15 0.2 0.02
+          translation 0.55 0.2 0.02
           children [
             USE DOCK_RAIL
           ]
         }
         Pose {
-          translation 0.15 -0.2 0.02
+          translation 0.55 -0.2 0.02
           children [
             USE DOCK_RAIL
           ]

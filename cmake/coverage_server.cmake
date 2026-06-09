@@ -12,7 +12,9 @@ target_include_directories(coverage_server PUBLIC
 )
 target_link_libraries(coverage_server
   "${cpp_typesupport_target}"
-    Fields2Cover::Fields2Cover)
+  Fields2Cover::Fields2Cover
+  ortools_vendor::ortools
+)
 ament_target_dependencies(coverage_server
   rclcpp
   geometry_msgs
@@ -37,6 +39,7 @@ if (BUILD_TESTING)
     target_link_libraries(coverage_server_utils_test
       "${cpp_typesupport_target}"
       Fields2Cover::Fields2Cover
+      ortools_vendor::ortools
     )
     add_dependencies(coverage_server_utils_test ${PROJECT_NAME})
     ament_target_dependencies(coverage_server_utils_test

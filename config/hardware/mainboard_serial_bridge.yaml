@@ -1,0 +1,9 @@
+mainboard_serial_bridge:
+  ros__parameters:
+    serial_port: /dev/ttyAMA0
+    baudrate: 115200
+    reconnect_period_s: 5.0
+    heartbeat_rate_hz: 50.0
+    charger_present_voltage_threshold: 10.0
+    imu_frame_id: imu
+    battery_frame_id: base_link

@@ -5,7 +5,10 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav2_msgs/action/dock_robot.hpp>
+#include <nav2_msgs/action/navigate_to_pose.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include "open_mower_next/msg/map.hpp"
 #include "open_mower_next/msg/docking_station.hpp"
 #include "open_mower_next/srv/find_nearest_docking_station.hpp"
@@ -47,6 +50,15 @@ private:
   rclcpp::Service<open_mower_next::srv::FindNearestDockingStation>::SharedPtr find_nearest_docking_station_service_;
 
   rclcpp_action::Client<nav2_msgs::action::DockRobot>::SharedPtr dock_client_;
+  rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr navigate_client_;
+  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr docking_cmd_vel_pub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr charger_present_sub_;
+  std::atomic<bool> charger_present_{false};
+  double docking_linear_velocity_;
+  double docking_angular_gain_;
+  double docking_max_angular_velocity_;
+  double docking_yaw_tolerance_;
+  double docking_drive_timeout_sec_;
 
   rclcpp_action::Server<DockRobotNearestAction>::SharedPtr dock_robot_nearest_server_;
   rclcpp_action::Server<DockRobotToAction>::SharedPtr dock_robot_to_server_;
@@ -63,6 +75,10 @@ private:
   void handleDockRobotToAccepted(const std::shared_ptr<DockRobotToGoalHandle> goal_handle);
 
   std::shared_ptr<open_mower_next::msg::DockingStation> findDockingStationById(const std::string& id);
+  bool navigateToApproachPose(const open_mower_next::msg::DockingStation& docking_station);
+  bool driveDockingVectorUntilCharging(const open_mower_next::msg::DockingStation& docking_station);
+  void publishDockingVelocity(double linear_x, double angular_z);
+  void stopDockingVelocity();
 
   template <typename ActionT, typename GoalHandleT>
   void executeDockingAction(const std::shared_ptr<GoalHandleT>& goal_handle,

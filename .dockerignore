@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+
+build
+install
+log
+docs/node_modules
+
+src/lib
+
+*.pyc
+__pycache__

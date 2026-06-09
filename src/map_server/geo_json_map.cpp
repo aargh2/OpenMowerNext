@@ -129,12 +129,14 @@ json GeoJSONMap::dockingStationToGeoJSONFeature(const msg::DockingStation & dock
 
   auto coordinates = json::array();
 
-  // calculate orientation point
-  auto orientationPoint = movePointTowardsOrientation(
-    docking_station.pose.pose.position, docking_station.pose.pose.orientation, 0.5);
-
+  if (docking_station.approach_pose.header.frame_id.empty()) {
+    geometry_msgs::msg::Point fallback_approach = movePointTowardsOrientation(
+      docking_station.pose.pose.position, docking_station.pose.pose.orientation, -0.5);
+    coordinates.push_back(pointToCoordinates(fallback_approach));
+  } else {
+    coordinates.push_back(pointToCoordinates(docking_station.approach_pose.pose.position));
+  }
   coordinates.push_back(pointToCoordinates(docking_station.pose.pose.position));
-  coordinates.push_back(pointToCoordinates(orientationPoint));
 
   feature["geometry"]["coordinates"] = coordinates;
 
@@ -300,10 +302,8 @@ void GeoJSONMap::parseLineStringFeature(msg::Map & map, const json & feature)
   docking_station.id = feature["properties"]["id"];
   docking_station.name = feature["properties"]["name"];
 
-  // docking station line string must have two coordinates
-  // the first one is the origin of the docking station (usually a middle of the charging
-  // connectors) the second point is used to determine the orientation of the docking station
-  // (towards the robot's connectors)
+  // Docking station line string must have two coordinates:
+  // the first one is the approach point and the second one is the dock edge.
 
   if (feature["geometry"]["coordinates"].size() < 2) {
     RCLCPP_WARN(
@@ -318,10 +318,12 @@ void GeoJSONMap::parseLineStringFeature(msg::Map & map, const json & feature)
       static_cast<int>(feature["geometry"]["coordinates"][0].size()));
   }
 
-  const geometry_msgs::msg::Point32 origin = parsePoint(feature["geometry"]["coordinates"][0]);
-  const geometry_msgs::msg::Point32 orientation = parsePoint(feature["geometry"]["coordinates"][1]);
+  const geometry_msgs::msg::Point32 approach = parsePoint(feature["geometry"]["coordinates"][0]);
+  const geometry_msgs::msg::Point32 edge = parsePoint(feature["geometry"]["coordinates"][1]);
 
-  docking_station.pose = calculateTwoPointsPose(origin, orientation);
+  docking_station.approach_pose = calculateTwoPointsPose(approach, edge);
+  docking_station.pose = calculateTwoPointsPose(edge, approach);
+  docking_station.pose.pose.orientation = docking_station.approach_pose.pose.orientation;
 
   map.docking_stations.push_back(docking_station);
 }

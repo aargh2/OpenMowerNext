@@ -45,6 +45,13 @@ def generate_launch_description():
         remappings=[('/cmd_vel_out', '/diff_drive_base_controller/cmd_vel')]
     )
 
+    coverage_server = Node(
+        package="open_mower_next",
+        executable="coverage_server",
+        output="screen",
+        parameters=[{'use_sim_time': False}]
+    )
+
     controller_params_file = os.path.join(share_directory, 'config', 'controllers.yaml')
 
     controller_manager = Node(
@@ -76,6 +83,7 @@ def generate_launch_description():
     return LaunchDescription([
         node_robot_state_publisher,
         twist_mux,
+        coverage_server,
         controller_manager,
 
         RegisterEventHandler(
@@ -121,6 +129,6 @@ def generate_launch_description():
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                [share_directory, '/launch/micro_ros_agent.launch.py']),
+                [share_directory, '/launch/hardware_bridge.launch.py']),
         ),
     ])

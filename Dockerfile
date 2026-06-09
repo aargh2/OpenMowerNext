@@ -41,7 +41,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && usermod --shell /bin/bash $USERNAME \
     && usermod -aG dialout $USERNAME
 
-COPY --from=builder $WORKSPACE/package.xml $WORKSPACE/
+COPY docker/hardware-runtime.package.xml $WORKSPACE/package.xml
 
 # Switch to bash to ensure sourceing works
 SHELL ["/bin/bash", "-c"]
@@ -53,19 +53,17 @@ RUN apt-get update \
     && source /opt/ros/${ROS_DISTRO}/setup.bash \
     && cd $WORKSPACE \
     && DEBIAN_FRONTEND=noninteractive rosdep install --from-paths . \
-    --ignore-src --skip-keys="$(rospack list-names | paste -s -d ' ' -)" \
+    --ignore-src --skip-keys="vesc_hw_interface" \
     -r -y \
     --dependency-types=exec \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy build artifacts from builder stage
+# Copy runtime artifacts from builder stage
 COPY --from=builder $WORKSPACE/install $WORKSPACE/install
 COPY --from=builder $WORKSPACE/launch $WORKSPACE/launch
 COPY --from=builder $WORKSPACE/config $WORKSPACE/config
-COPY --from=builder $WORKSPACE/build $WORKSPACE/build
 COPY --from=builder $WORKSPACE/description $WORKSPACE/description
-COPY --from=builder /opt/ros/$ROS_DISTRO /opt/ros/$ROS_DISTRO
 
 # Copy XML plugins definition
 # TODO: this should be worked out better
