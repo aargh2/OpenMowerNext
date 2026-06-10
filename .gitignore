@@ -13,3 +13,7 @@ cmake-build-debug*/
 /.name
 /.idea
 .DS_Store
+src/lib/fields2cover
+src/lib/ntrip_client
+src/lib/ublox_f9p
+src/lib/vesc
