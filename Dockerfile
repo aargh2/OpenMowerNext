@@ -17,6 +17,9 @@ COPY utils/install-custom-deps.sh $WORKSPACE/utils/
 # Install dependencies
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
     && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+    libgeographiclib-dev \
+    pkg-config \
     && rosdep update \
     && make custom-deps deps \
     && apt-get clean \
@@ -64,6 +67,8 @@ COPY --from=builder $WORKSPACE/install $WORKSPACE/install
 COPY --from=builder $WORKSPACE/launch $WORKSPACE/launch
 COPY --from=builder $WORKSPACE/config $WORKSPACE/config
 COPY --from=builder $WORKSPACE/description $WORKSPACE/description
+COPY --from=builder $WORKSPACE/.devcontainer/default.env $WORKSPACE/.devcontainer/default.env
+COPY --from=builder $WORKSPACE/.devcontainer/home $WORKSPACE/.devcontainer/home
 
 # Copy XML plugins definition
 # TODO: this should be worked out better

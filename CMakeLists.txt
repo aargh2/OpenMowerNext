@@ -35,7 +35,11 @@ find_package(ortools_vendor REQUIRED)
 find_package(Fields2Cover REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/geographiclib/")
-find_package(GeographicLib REQUIRED)
+find_package(GeographicLib QUIET)
+if (NOT GeographicLib_FOUND)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GeographicLib REQUIRED geographiclib)
+endif ()
 
 option(OPEN_MOWER_NEXT_ENABLE_INTEGRATION_TESTS "Enable explicit integration tests" OFF)
 
@@ -105,6 +109,14 @@ endif ()
 INSTALL(
         DIRECTORY config launch description worlds maps protos resource
         DESTINATION share/${PROJECT_NAME}
+)
+
+INSTALL(
+        PROGRAMS
+        scripts/hw_vesc_status.py
+        scripts/hw_vesc_motor_test.py
+        scripts/hw_gps_ntrip_test.py
+        DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()
