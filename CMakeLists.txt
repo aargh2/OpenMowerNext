@@ -116,6 +116,7 @@ INSTALL(
         scripts/hw_vesc_status.py
         scripts/hw_vesc_motor_test.py
         scripts/hw_gps_ntrip_test.py
+        scripts/hw_mainboard_bridge_test.py
         DESTINATION lib/${PROJECT_NAME}
 )
 

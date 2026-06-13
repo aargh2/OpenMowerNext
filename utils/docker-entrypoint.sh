@@ -28,12 +28,17 @@ restore_existing_env() {
   fi
 }
 
+hardware_tests_dir="${WORKSPACE}/hardware_tests"
+
 preserve_existing_env
 if [ -f "${WORKSPACE}/.devcontainer/default.env" ]; then
   source "${WORKSPACE}/.devcontainer/default.env"
 fi
 if [ -f "${WORKSPACE}/.devcontainer/override/.env" ]; then
   source "${WORKSPACE}/.devcontainer/override/.env"
+fi
+if [ -f "${hardware_tests_dir}/.env" ]; then
+  source "${hardware_tests_dir}/.env"
 fi
 restore_existing_env
 
@@ -50,7 +55,7 @@ if [ -z "${OM_DATUM_LONG}" ]; then
 fi
 
 if [ -z "${OM_MAP_PATH}" ]; then
-  export OM_MAP_PATH=${WORKSPACE}/map.json
+  export OM_MAP_PATH=${hardware_tests_dir}/map.geojson
 
   echo "OM_MAP_PATH not set, using default value: ${OM_MAP_PATH}"
 fi

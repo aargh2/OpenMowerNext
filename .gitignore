@@ -2,6 +2,8 @@
 /install
 /log
 /cache
+/.buildx-cache
+/.buildx-cache-new
 /build
 
 __pycache__/
