@@ -9,6 +9,7 @@ target_include_directories(mainboard_serial_bridge PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:include>
 )
+target_link_libraries(mainboard_serial_bridge "${cpp_typesupport_target}")
 
 ament_target_dependencies(mainboard_serial_bridge
         rclcpp

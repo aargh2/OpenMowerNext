@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <open_mower_next/msg/ui_button_event.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -55,6 +56,7 @@ class MainboardSerialBridgeNode : public rclcpp::Node {
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr charge_voltage_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  rclcpp::Publisher<open_mower_next::msg::UiButtonEvent>::SharedPtr ui_button_event_pub_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr emergency_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_emergency_service_;
   rclcpp::TimerBase::SharedPtr heartbeat_timer_;

@@ -14,7 +14,9 @@ target_compile_features(map_server_node PUBLIC c_std_99 cxx_std_17)  # Require C
 target_include_directories(map_server_node PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:include>
+        ${GeographicLib_INCLUDE_DIRS}
 )
+target_link_directories(map_server_node PRIVATE ${GeographicLib_LIBRARY_DIRS})
 target_link_libraries(map_server_node "${cpp_typesupport_target}")
 
 

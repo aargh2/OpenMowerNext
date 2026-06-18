@@ -22,8 +22,13 @@ services:
     privileged: true
     security_opt:
     - seccomp:unconfined
+    devices:
+    - "${OM_HOST_MAINBOARD_SERIAL_PORT:-/dev/ttyAMA0}:/dev/ttyAMA0"
+    - "${OM_HOST_GPS_SERIAL_PORT:-/dev/ttyAMA1}:/dev/ttyAMA1"
+    - "${OM_HOST_VESC_RIGHT_SERIAL_PORT:-/dev/ttyAMA2}:/dev/ttyAMA2"
+    - "${OM_HOST_VESC_MOWER_SERIAL_PORT:-/dev/ttyAMA3}:/dev/ttyAMA3"
+    - "${OM_HOST_VESC_LEFT_SERIAL_PORT:-/dev/ttyAMA4}:/dev/ttyAMA4"
     volumes:
-    - /dev:/dev
     - ./hardware_tests:/opt/ws/hardware_tests
     - ./scripts:/opt/ws/hardware_tests/scripts:ro
     environment:

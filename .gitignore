@@ -16,3 +16,16 @@ cmake-build-debug*/
 /.idea
 .DS_Store
 src/lib/**
+
+# Local runtime/deploy artifacts
+/.devcontainer/default.env
+/.devcontainer/home/map.geojson
+/mapa.geojson
+/mapa.txt
+/mapa2.geojson
+/mapa2.osm
+/openmower.mapcss
+/openmowernext-rpi.tar
+/systemd/openmower-debug.service
+/systemd/openmower.service
+/worlds/zahrada.png

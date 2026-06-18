@@ -62,6 +62,8 @@ MainboardSerialBridgeNode::MainboardSerialBridgeNode(const rclcpp::NodeOptions &
   charge_voltage_pub_ = create_publisher<std_msgs::msg::Float32>("/power/charge_voltage", 10);
   battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>("/power", 10);
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu/data_raw", 50);
+  ui_button_event_pub_ =
+      create_publisher<open_mower_next::msg::UiButtonEvent>("/hardware/ui_event", 10);
 
   emergency_service_ = create_service<std_srvs::srv::SetBool>(
       "/hardware/set_emergency",
@@ -256,6 +258,11 @@ void MainboardSerialBridgeNode::process_frame(const std::vector<uint8_t> & encod
     case PACKET_ID_LL_UI_EVENT:
       if (packet.size() == sizeof(LlUiEvent)) {
         const auto event = parse_packet<LlUiEvent>(packet);
+        open_mower_next::msg::UiButtonEvent msg;
+        msg.header.stamp = now();
+        msg.button_id = event.button_id;
+        msg.press_duration = event.press_duration;
+        ui_button_event_pub_->publish(msg);
         RCLCPP_INFO(
             get_logger(), "Mainboard UI event button=%u duration=%u", event.button_id,
             event.press_duration);

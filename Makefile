@@ -14,6 +14,7 @@ WEBOTS_PORT ?= 1234
 DOCKER_IMAGE ?= openmowernext:local
 DOCKER_BUILDER ?= openmower-builder
 DOCKER_RPI_PLATFORM ?= linux/arm64/v8
+DOCKER_RPI_IMAGE_TAR ?= openmowernext-rpi.tar
 DOCKER_BUILDX_CACHE ?= .buildx-cache
 DOCKER_HARDWARE_TESTS_DIR ?= $(CURDIR)/hardware_tests
 DOCKER_HARDWARE_TESTS_MOUNT ?= /opt/ws/hardware_tests
@@ -24,7 +25,7 @@ SHELL := /bin/bash
 
 all: custom-deps deps build
 
-.PHONY: deps custom-deps build-libs build build-release docker-build docker-build-rpi docker-run docker-run-shell hardware-tests-init sim run dev run-foxglove foxglove foxglove-deps foxglove-service-install foxglove-service-enable foxglove-service-disable foxglove-service-restart foxglove-service-status foxglove-service-logs rsp remote-devices rosbridge rosbridge-deps rosbridge-service-install rosbridge-service-enable rosbridge-service-disable rosbridge-service-restart rosbridge-service-status rosbridge-service-logs
+.PHONY: deps custom-deps build-libs build build-release docker-build docker-build-rpi docker-save-rpi docker-build-rpi-save docker-run docker-run-shell hardware-tests-init sim run dev run-foxglove foxglove foxglove-deps foxglove-service-install foxglove-service-enable foxglove-service-disable foxglove-service-restart foxglove-service-status foxglove-service-logs rsp remote-devices rosbridge rosbridge-deps rosbridge-service-install rosbridge-service-enable rosbridge-service-disable rosbridge-service-restart rosbridge-service-status rosbridge-service-logs
 
 deps:
 	rosdep install --from-paths . src/lib --ignore-src -i -y -r
@@ -50,6 +51,14 @@ docker-build-rpi:
 	docker buildx build --builder "$(DOCKER_BUILDER)" --platform "$(DOCKER_RPI_PLATFORM)" --cache-from type=local,src="$(DOCKER_BUILDX_CACHE)" --cache-to type=local,dest="$(DOCKER_BUILDX_CACHE)-new",mode=max -t "$(DOCKER_IMAGE)" --load .
 	rm -rf "$(DOCKER_BUILDX_CACHE)"
 	mv "$(DOCKER_BUILDX_CACHE)-new" "$(DOCKER_BUILDX_CACHE)"
+
+docker-save-rpi:
+	mkdir -p "$(dir $(DOCKER_RPI_IMAGE_TAR))"
+	docker image inspect "$(DOCKER_IMAGE)" >/dev/null
+	docker save "$(DOCKER_IMAGE)" -o "$(DOCKER_RPI_IMAGE_TAR)"
+	@printf 'Saved %s to %s\n' "$(DOCKER_IMAGE)" "$(DOCKER_RPI_IMAGE_TAR)"
+
+docker-build-rpi-save: docker-build-rpi docker-save-rpi
 
 docker-run:
 	docker compose up workspace

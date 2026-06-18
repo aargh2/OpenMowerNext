@@ -56,6 +56,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
         "src/msg/DockingStation.msg"
         "src/msg/PolygonWithHoles.msg"
         "src/msg/CoverageGeometry.msg"
+        "src/msg/UiButtonEvent.msg"
         "src/action/DockRobotTo.action"
         "src/action/DockRobotNearest.action"
         "src/action/RecordDockingStation.action"
