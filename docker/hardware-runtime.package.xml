@@ -24,6 +24,7 @@
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>unique_identifier_msgs</exec_depend>
+  <exec_depend>foxglove_msgs</exec_depend>
   <exec_depend>behaviortree_cpp</exec_depend>
   <exec_depend>geographiclib</exec_depend>
   <exec_depend>fields2cover</exec_depend>
@@ -61,4 +62,5 @@
   <exec_depend>nav2_velocity_smoother</exec_depend>
   <exec_depend>robot_localization</exec_depend>
   <exec_depend>opennav_docking</exec_depend>
+  <exec_depend>rosbridge_server</exec_depend>
 </package>

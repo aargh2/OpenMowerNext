@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenMower Next</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>OpenMower Next</h1>
+        <p id="last-update">Waiting for ROS data</p>
+      </div>
+      <form id="connection-form" class="connection">
+        <label for="rosbridge-url">rosbridge</label>
+        <input id="rosbridge-url" name="rosbridge-url" autocomplete="url" />
+        <button id="connect-button" type="submit">Connect</button>
+      </form>
+    </header>
+
+    <main>
+      <section class="status-strip" aria-label="Connection and safety status">
+        <div class="status-pill" id="connection-status">
+          <span class="dot"></span>
+          <strong>Disconnected</strong>
+          <small>ROS bridge</small>
+        </div>
+        <div class="status-pill" id="emergency-status">
+          <span class="dot"></span>
+          <strong>Unknown</strong>
+          <small>Emergency</small>
+        </div>
+        <div class="status-pill" id="gps-status">
+          <span class="dot"></span>
+          <strong>No data</strong>
+          <small>GPS fix</small>
+        </div>
+        <div class="status-pill" id="charger-status">
+          <span class="dot"></span>
+          <strong>Unknown</strong>
+          <small>Charger</small>
+        </div>
+      </section>
+
+      <section class="grid" aria-label="Mower telemetry">
+        <article class="panel battery-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Battery</h2>
+              <p id="battery-age">No message yet</p>
+            </div>
+            <output id="battery-percent">--%</output>
+          </div>
+          <div class="battery-meter" aria-hidden="true">
+            <div id="battery-fill"></div>
+          </div>
+          <dl class="metrics">
+            <div>
+              <dt>Voltage</dt>
+              <dd id="battery-voltage">--</dd>
+            </div>
+            <div>
+              <dt>Current</dt>
+              <dd id="battery-current">--</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd id="battery-status">--</dd>
+            </div>
+            <div>
+              <dt>Charge voltage</dt>
+              <dd id="charge-voltage">--</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>GPS</h2>
+              <p id="gps-age">No message yet</p>
+            </div>
+            <output id="gps-fix-label">--</output>
+          </div>
+          <dl class="metrics">
+            <div>
+              <dt>Latitude</dt>
+              <dd id="gps-latitude">--</dd>
+            </div>
+            <div>
+              <dt>Longitude</dt>
+              <dd id="gps-longitude">--</dd>
+            </div>
+            <div>
+              <dt>Altitude</dt>
+              <dd id="gps-altitude">--</dd>
+            </div>
+            <div>
+              <dt>Accuracy</dt>
+              <dd id="gps-accuracy">--</dd>
+            </div>
+            <div>
+              <dt>Speed</dt>
+              <dd id="gps-speed">--</dd>
+            </div>
+            <div>
+              <dt>Heading</dt>
+              <dd id="gps-heading">--</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Hardware</h2>
+              <p id="hardware-age">Waiting for status topics</p>
+            </div>
+          </div>
+          <dl class="metrics">
+            <div>
+              <dt>Emergency</dt>
+              <dd id="emergency-value">--</dd>
+            </div>
+            <div>
+              <dt>Rain</dt>
+              <dd id="rain-value">--</dd>
+            </div>
+            <div>
+              <dt>Charger</dt>
+              <dd id="charger-value">--</dd>
+            </div>
+            <div>
+              <dt>Last button</dt>
+              <dd id="button-value">--</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="panel controls-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Controls</h2>
+              <p id="command-feedback">Commands use rosbridge services and topic publishing</p>
+            </div>
+          </div>
+          <div class="button-grid">
+            <button class="danger" data-service="set-emergency" type="button">Set emergency</button>
+            <button data-service="clear-emergency" type="button">Clear emergency</button>
+            <button data-button="home" type="button">Home</button>
+            <button data-button="start" type="button">Start</button>
+            <button data-button="s1" type="button">S1</button>
+            <button data-button="s2" type="button">S2</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="event-log" aria-label="ROS event log">
+        <div class="panel-heading">
+          <div>
+            <h2>Events</h2>
+            <p>Recent connection and command activity</p>
+          </div>
+          <button id="clear-log" type="button">Clear</button>
+        </div>
+        <ol id="log-list"></ol>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

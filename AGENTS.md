@@ -5,7 +5,7 @@
 - Do not add nested ROS packages under `src/`; C++ nodes live in functional dirs like `src/map_server`, `src/map_recorder`, `src/docking_helper`, `src/coverage_server`, and `src/sim`.
 - Keep each node's headers and sources together; add new node targets through root `CMakeLists.txt` and the `cmake/*.cmake` include files.
 - Interface files live in `src/msg`, `src/srv`, and `src/action`; add new ones to `rosidl_generate_interfaces()` in root `CMakeLists.txt`.
-- Runtime resources installed by CMake are `config`, `launch`, `description`, `worlds`, `maps`, `protos`, and `resource`; update the root `INSTALL(DIRECTORY ...)` if adding another runtime resource dir.
+- Runtime resources installed by CMake are `config`, `launch`, `description`, `worlds`, `maps`, `protos`, `resource`, and `web-ui`; update the root `INSTALL(DIRECTORY ...)` if adding another runtime resource dir.
 
 ## Environment
 - Use ROS 2 Jazzy. The devcontainer mounts the repo at `/opt/ws` and runs post-create `make custom-deps deps`.
@@ -18,12 +18,20 @@
 - Build all: `make build` (`colcon build --symlink-install`).
 - Build only external libs: `make build-libs`.
 - Release build: `make build-release`.
+- Build Raspberry Pi image: `make docker-build-rpi` (uses `DOCKER_RPI_PLATFORM`, default `linux/arm64/v8`).
+- Save the current Docker image to a tarball: `make docker-save-rpi`; override `DOCKER_RPI_IMAGE_TAR` if needed (default `openmowernext-rpi.tar`).
+- Build and save the Raspberry Pi image in one step: `make docker-build-rpi-save`.
+- Build the standalone web UI image: `make docker-build-web-ui` (image defaults to `openmowernext-web-ui:local`).
+- Build and save the standalone web UI ARM64 image: `make docker-build-web-ui-rpi-save`; override `WEB_UI_RPI_IMAGE_TAR` if needed (default `openmowernext-web-ui-rpi.tar`).
+- Push local Docker images to the LAN registry: `make docker-push-all`; override `DOCKER_REGISTRY` if needed (default `192.168.1.106:6000`).
+- Run the standalone web UI container: `make docker-run-web-ui`; override `WEB_UI_PORT` if needed (default `8080`).
 - Focused package build: `colcon build --symlink-install --packages-select open_mower_next`.
 - Source before direct launches: `source /opt/ros/$ROS_DISTRO/setup.bash && source install/setup.bash`.
 - Hardware launch from repo root: `make run`.
 - Sim launch from repo root: `make sim`; it sources ROS, the installed workspace, `.devcontainer/default.env`, then launches `open_mower_next sim.launch.py` with Webots.
 - Headless Webots smoke launch: `WEBOTS_OFFSCREEN=1 ros2 launch open_mower_next sim.launch.py gui:=false mode:=fast` after sourcing ROS and `install/setup.bash`.
-- ROS MCP rosbridge foreground launch: `make rosbridge`; user service setup: `make rosbridge-service-enable`.
+- ROS MCP rosbridge foreground launch: `make rosbridge`; user service setup: `make rosbridge-service-enable`. Rosbridge binds to `0.0.0.0:9090` by default for LAN access and is also started by `openmower.launch.py`.
+- Static mower dashboard lives in `web-ui/`; serve it with the standalone web UI Docker image and connect it to rosbridge, usually `ws://<mower-host>:9090`.
 - Direct ROS package launches use `open_mower_next`, e.g. `ros2 launch open_mower_next openmower.launch.py` or `ros2 launch open_mower_next sim.launch.py`.
 - Docs are isolated under `docs/`: `cd docs && npm ci && npm run docs:build`; dev server is `npm run docs:dev`.
 
@@ -45,4 +53,7 @@
 - Webots launch depends on `webots_ros2_driver`, `webots_ros2_control`, and a Webots binary available on the host.
 - If `webots_ros2_driver` auto-installs Webots, it usually lands in `~/.ros/webotsR2025a/webots`; export `WEBOTS_HOME` to that path or use `make sim`.
 - Project OpenCode config starts `ros-mcp` with `uvx`; restart OpenCode after config changes or after installing `uv`.
-- Rosbridge for MCP binds to `127.0.0.1:9090` by default; prefer SSH tunneling over binding it to the LAN.
+- Rosbridge for MCP is intentionally public on the LAN by default (`0.0.0.0:9090`) so the web UI and external MCP clients can connect.
+- Project Codex MCP config lives in `.codex/config.toml` and starts `ros-mcp` through `uvx`; restart Codex after installing `uv` or changing that file.
+- `openmowernext-rpi.tar` is a local Docker image export from `make docker-save-rpi`/`make docker-build-rpi-save`; do not commit it.
+- `openmowernext-web-ui-rpi.tar` is a local Docker image export from `make docker-save-web-ui-rpi`/`make docker-build-web-ui-rpi-save`; do not commit it.

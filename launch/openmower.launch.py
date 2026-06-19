@@ -3,9 +3,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, RegisterEventHandler, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler, ExecuteProcess
 from launch.event_handlers import OnProcessStart, OnProcessExit
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 
 from launch_ros.actions import Node
 
@@ -16,6 +17,9 @@ def generate_launch_description():
     package_name = 'open_mower_next'
 
     share_directory = get_package_share_directory(package_name)
+    rosbridge_share_directory = get_package_share_directory('rosbridge_server')
+    rosbridge_address = LaunchConfiguration('rosbridge_address')
+    rosbridge_port = LaunchConfiguration('rosbridge_port')
     xacro_file = os.path.join(share_directory, 'description/robot.urdf.xacro')
     robot_description_config = xacro.process_file(xacro_file, mappings={
         'use_ros2_control': '1',
@@ -52,6 +56,16 @@ def generate_launch_description():
         parameters=[{'use_sim_time': False}]
     )
 
+    rosbridge = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(
+            os.path.join(rosbridge_share_directory, 'launch', 'rosbridge_websocket_launch.xml')
+        ),
+        launch_arguments={
+            'address': rosbridge_address,
+            'port': rosbridge_port,
+        }.items(),
+    )
+
     controller_params_file = os.path.join(share_directory, 'config', 'controllers.yaml')
 
     controller_manager = Node(
@@ -81,9 +95,20 @@ def generate_launch_description():
 
     # Launch them all!
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'rosbridge_address',
+            default_value=os.environ.get('ROSBRIDGE_ADDRESS', '0.0.0.0'),
+            description='Address rosbridge websocket binds to. Use 0.0.0.0 for LAN access.',
+        ),
+        DeclareLaunchArgument(
+            'rosbridge_port',
+            default_value=os.environ.get('ROSBRIDGE_PORT', '9090'),
+            description='rosbridge websocket port.',
+        ),
         node_robot_state_publisher,
         twist_mux,
         coverage_server,
+        rosbridge,
         controller_manager,
 
         RegisterEventHandler(

@@ -26,6 +26,8 @@ src/lib/**
 /mapa2.osm
 /openmower.mapcss
 /openmowernext-rpi.tar
+/openmowernext-web-ui-rpi.tar
+/openmowernext-*-rpi.tar
 /systemd/openmower-debug.service
 /systemd/openmower.service
 /worlds/zahrada.png

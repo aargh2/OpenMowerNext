@@ -108,7 +108,7 @@ if (BUILD_TESTING)
 endif ()
 
 INSTALL(
-        DIRECTORY config launch description worlds maps protos resource
+        DIRECTORY config launch description worlds maps protos resource web-ui
         DESTINATION share/${PROJECT_NAME}
 )
 

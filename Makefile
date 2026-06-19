@@ -2,7 +2,7 @@ REMOTE_HOST ?= omdev.local
 REMOTE_USER ?= openmower
 ROS_DISTRO ?= jazzy
 ROS_LOG_DIR = log/
-ROSBRIDGE_ADDRESS ?= 127.0.0.1
+ROSBRIDGE_ADDRESS ?= 0.0.0.0
 ROSBRIDGE_PORT ?= 9090
 ROSBRIDGE_SERVICE ?= openmower-rosbridge.service
 FOXGLOVE_ADDRESS ?= 0.0.0.0
@@ -12,10 +12,25 @@ FOXGLOVE_USE_SIM_TIME ?= false
 WEBOTS_STREAM ?= false
 WEBOTS_PORT ?= 1234
 DOCKER_IMAGE ?= openmowernext:local
+WEB_UI_IMAGE ?= openmowernext-web-ui:local
+WEB_UI_PORT ?= 8080
+WEB_UI_RPI_IMAGE_TAR ?= openmowernext-web-ui-rpi.tar
+DOCKER_REGISTRY ?= 192.168.1.106:6000
 DOCKER_BUILDER ?= openmower-builder
 DOCKER_RPI_PLATFORM ?= linux/arm64/v8
+IMAGE_BUILD_DATE := $(if $(IMAGE_BUILD_DATE),$(IMAGE_BUILD_DATE),$(shell date +%Y%m%d-%H%M))
+GIT_SHORT_SHA := $(if $(GIT_SHORT_SHA),$(GIT_SHORT_SHA),$(shell git rev-parse --short HEAD 2>/dev/null || echo nogit))
+DOCKER_RPI_IMAGE_REPOSITORY ?= openmowernext
+DOCKER_RPI_IMAGE_TAG ?= rpi5-$(IMAGE_BUILD_DATE)-g$(GIT_SHORT_SHA)
+DOCKER_RPI_IMAGE ?= $(DOCKER_RPI_IMAGE_REPOSITORY):$(DOCKER_RPI_IMAGE_TAG)
+DOCKER_RPI_STABLE_IMAGE ?= $(DOCKER_RPI_IMAGE_REPOSITORY):rpi5
+WEB_UI_RPI_IMAGE_REPOSITORY ?= openmowernext-web-ui
+WEB_UI_RPI_IMAGE_TAG ?= rpi5-$(IMAGE_BUILD_DATE)-g$(GIT_SHORT_SHA)
+WEB_UI_RPI_IMAGE ?= $(WEB_UI_RPI_IMAGE_REPOSITORY):$(WEB_UI_RPI_IMAGE_TAG)
+WEB_UI_RPI_STABLE_IMAGE ?= $(WEB_UI_RPI_IMAGE_REPOSITORY):rpi5
 DOCKER_RPI_IMAGE_TAR ?= openmowernext-rpi.tar
 DOCKER_BUILDX_CACHE ?= .buildx-cache
+WEB_UI_BUILDX_CACHE ?= .buildx-cache-web-ui
 DOCKER_HARDWARE_TESTS_DIR ?= $(CURDIR)/hardware_tests
 DOCKER_HARDWARE_TESTS_MOUNT ?= /opt/ws/hardware_tests
 DOCKER_TEST_SCRIPTS_DIR ?= $(CURDIR)/scripts
@@ -25,7 +40,7 @@ SHELL := /bin/bash
 
 all: custom-deps deps build
 
-.PHONY: deps custom-deps build-libs build build-release docker-build docker-build-rpi docker-save-rpi docker-build-rpi-save docker-run docker-run-shell hardware-tests-init sim run dev run-foxglove foxglove foxglove-deps foxglove-service-install foxglove-service-enable foxglove-service-disable foxglove-service-restart foxglove-service-status foxglove-service-logs rsp remote-devices rosbridge rosbridge-deps rosbridge-service-install rosbridge-service-enable rosbridge-service-disable rosbridge-service-restart rosbridge-service-status rosbridge-service-logs
+.PHONY: deps custom-deps build-libs build build-release docker-build docker-build-rpi docker-build-rpi-versioned docker-save-rpi docker-build-rpi-save docker-build-web-ui docker-build-web-ui-rpi docker-build-web-ui-rpi-versioned docker-save-web-ui-rpi docker-build-web-ui-rpi-save docker-push docker-push-rpi-versioned docker-promote-rpi docker-push-web-ui docker-push-web-ui-rpi-versioned docker-promote-web-ui-rpi docker-push-all docker-promote-rpi-all docker-run-web-ui docker-run docker-run-shell hardware-tests-init sim run dev run-foxglove foxglove foxglove-deps foxglove-service-install foxglove-service-enable foxglove-service-disable foxglove-service-restart foxglove-service-status foxglove-service-logs rsp remote-devices rosbridge rosbridge-deps rosbridge-service-install rosbridge-service-enable rosbridge-service-disable rosbridge-service-restart rosbridge-service-status rosbridge-service-logs
 
 deps:
 	rosdep install --from-paths . src/lib --ignore-src -i -y -r
@@ -46,22 +61,78 @@ build-release:
 docker-build:
 	docker compose build workspace
 
+docker-build-web-ui:
+	WEB_UI_IMAGE="$(WEB_UI_IMAGE)" docker compose build web-ui
+
+docker-build-web-ui-rpi:
+	mkdir -p "$(WEB_UI_BUILDX_CACHE)"
+	docker buildx build --builder "$(DOCKER_BUILDER)" --platform "$(DOCKER_RPI_PLATFORM)" --cache-from type=local,src="$(WEB_UI_BUILDX_CACHE)" --cache-to type=local,dest="$(WEB_UI_BUILDX_CACHE)-new",mode=max -t "$(WEB_UI_RPI_IMAGE)" --load web-ui
+	rm -rf "$(WEB_UI_BUILDX_CACHE)"
+	mv "$(WEB_UI_BUILDX_CACHE)-new" "$(WEB_UI_BUILDX_CACHE)"
+
+docker-build-web-ui-rpi-versioned: docker-build-web-ui-rpi
+
 docker-build-rpi:
 	mkdir -p "$(DOCKER_BUILDX_CACHE)"
-	docker buildx build --builder "$(DOCKER_BUILDER)" --platform "$(DOCKER_RPI_PLATFORM)" --cache-from type=local,src="$(DOCKER_BUILDX_CACHE)" --cache-to type=local,dest="$(DOCKER_BUILDX_CACHE)-new",mode=max -t "$(DOCKER_IMAGE)" --load .
+	docker buildx build --builder "$(DOCKER_BUILDER)" --platform "$(DOCKER_RPI_PLATFORM)" --cache-from type=local,src="$(DOCKER_BUILDX_CACHE)" --cache-to type=local,dest="$(DOCKER_BUILDX_CACHE)-new",mode=max -t "$(DOCKER_RPI_IMAGE)" --load .
 	rm -rf "$(DOCKER_BUILDX_CACHE)"
 	mv "$(DOCKER_BUILDX_CACHE)-new" "$(DOCKER_BUILDX_CACHE)"
 
+docker-build-rpi-versioned: docker-build-rpi
+
 docker-save-rpi:
 	mkdir -p "$(dir $(DOCKER_RPI_IMAGE_TAR))"
-	docker image inspect "$(DOCKER_IMAGE)" >/dev/null
-	docker save "$(DOCKER_IMAGE)" -o "$(DOCKER_RPI_IMAGE_TAR)"
-	@printf 'Saved %s to %s\n' "$(DOCKER_IMAGE)" "$(DOCKER_RPI_IMAGE_TAR)"
+	docker image inspect "$(DOCKER_RPI_IMAGE)" >/dev/null
+	docker save "$(DOCKER_RPI_IMAGE)" -o "$(DOCKER_RPI_IMAGE_TAR)"
+	@printf 'Saved %s to %s\n' "$(DOCKER_RPI_IMAGE)" "$(DOCKER_RPI_IMAGE_TAR)"
 
 docker-build-rpi-save: docker-build-rpi docker-save-rpi
 
+docker-save-web-ui-rpi:
+	mkdir -p "$(dir $(WEB_UI_RPI_IMAGE_TAR))"
+	docker image inspect "$(WEB_UI_RPI_IMAGE)" >/dev/null
+	docker save "$(WEB_UI_RPI_IMAGE)" -o "$(WEB_UI_RPI_IMAGE_TAR)"
+	@printf 'Saved %s to %s\n' "$(WEB_UI_RPI_IMAGE)" "$(WEB_UI_RPI_IMAGE_TAR)"
+
+docker-build-web-ui-rpi-save: docker-build-web-ui-rpi docker-save-web-ui-rpi
+
+docker-push:
+	docker image inspect "$(DOCKER_RPI_IMAGE)" >/dev/null
+	docker tag "$(DOCKER_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(DOCKER_RPI_IMAGE)"
+	docker push "$(DOCKER_REGISTRY)/$(DOCKER_RPI_IMAGE)"
+
+docker-push-rpi-versioned: docker-push
+
+docker-promote-rpi: docker-push-rpi-versioned
+	docker image inspect "$(DOCKER_RPI_IMAGE)" >/dev/null
+	docker tag "$(DOCKER_RPI_IMAGE)" "$(DOCKER_RPI_STABLE_IMAGE)"
+	docker tag "$(DOCKER_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(DOCKER_RPI_STABLE_IMAGE)"
+	docker push "$(DOCKER_REGISTRY)/$(DOCKER_RPI_STABLE_IMAGE)"
+	@printf 'Promoted %s to %s\n' "$(DOCKER_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(DOCKER_RPI_STABLE_IMAGE)"
+
+docker-push-web-ui:
+	docker image inspect "$(WEB_UI_RPI_IMAGE)" >/dev/null
+	docker tag "$(WEB_UI_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_IMAGE)"
+	docker push "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_IMAGE)"
+
+docker-push-web-ui-rpi-versioned: docker-push-web-ui
+
+docker-promote-web-ui-rpi: docker-push-web-ui-rpi-versioned
+	docker image inspect "$(WEB_UI_RPI_IMAGE)" >/dev/null
+	docker tag "$(WEB_UI_RPI_IMAGE)" "$(WEB_UI_RPI_STABLE_IMAGE)"
+	docker tag "$(WEB_UI_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_STABLE_IMAGE)"
+	docker push "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_STABLE_IMAGE)"
+	@printf 'Promoted %s to %s\n' "$(WEB_UI_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_STABLE_IMAGE)"
+
+docker-push-all: docker-push docker-push-web-ui
+
+docker-promote-rpi-all: docker-promote-rpi docker-promote-web-ui-rpi
+
 docker-run:
 	docker compose up workspace
+
+docker-run-web-ui:
+	WEB_UI_IMAGE="$(WEB_UI_IMAGE)" WEB_UI_PORT="$(WEB_UI_PORT)" docker compose up web-ui
 
 docker-run-shell: hardware-tests-init
 	mkdir -p "$(DOCKER_HARDWARE_TESTS_DIR)"

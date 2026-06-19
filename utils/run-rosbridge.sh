@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
-ROSBRIDGE_ADDRESS="${ROSBRIDGE_ADDRESS:-127.0.0.1}"
+ROSBRIDGE_ADDRESS="${ROSBRIDGE_ADDRESS:-0.0.0.0}"
 ROSBRIDGE_PORT="${ROSBRIDGE_PORT:-9090}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
