@@ -43,6 +43,22 @@
         </div>
       </section>
 
+      <section class="map-section" aria-label="Mower map">
+        <article class="panel map-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Map</h2>
+              <p id="map-age">Waiting for map and pose</p>
+            </div>
+            <output id="pose-label">--</output>
+          </div>
+          <div class="map-canvas-wrap">
+            <canvas id="map-view" aria-label="Mowing map with mower position"></canvas>
+            <div id="map-empty" class="map-empty">Waiting for map</div>
+          </div>
+        </article>
+      </section>
+
       <section class="grid" aria-label="Mower telemetry">
         <article class="panel battery-panel">
           <div class="panel-heading">

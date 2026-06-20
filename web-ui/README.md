@@ -49,6 +49,8 @@ The app reads:
 - `/hardware/ui_event` (`open_mower_next/msg/UiButtonEvent`)
 - `/gps/fix` (`sensor_msgs/msg/NavSatFix`)
 - `/gps/odom` (`nav_msgs/msg/Odometry`)
+- `/mowing_map` (`open_mower_next/msg/Map`)
+- `/odometry/filtered/map` (`nav_msgs/msg/Odometry`)
 
 The app writes:
 

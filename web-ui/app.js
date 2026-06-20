@@ -7,6 +7,12 @@ const TOPICS = {
   uiEvent: { topic: "/hardware/ui_event", type: "open_mower_next/msg/UiButtonEvent" },
   gpsFix: { topic: "/gps/fix", type: "sensor_msgs/msg/NavSatFix" },
   gpsOdom: { topic: "/gps/odom", type: "nav_msgs/msg/Odometry" },
+  map: {
+    topic: "/mowing_map",
+    type: "open_mower_next/msg/Map",
+    qos: { durability: "transient_local", reliability: "reliable", history: "keep_last", depth: 1 },
+  },
+  localizedOdom: { topic: "/odometry/filtered/map", type: "nav_msgs/msg/Odometry" },
 };
 
 const BUTTONS = {
@@ -23,10 +29,14 @@ const state = {
   lastMessageAt: null,
   batteryAt: null,
   gpsAt: null,
+  mapAt: null,
+  poseAt: null,
   hardwareAt: null,
   battery: null,
   gpsFix: null,
   gpsOdom: null,
+  map: null,
+  localizedOdom: null,
   charger: null,
   chargeVoltage: null,
   emergency: null,
@@ -68,6 +78,10 @@ function bindElements() {
     "emergency-status",
     "gps-status",
     "charger-status",
+    "map-age",
+    "pose-label",
+    "map-view",
+    "map-empty",
     "battery-age",
     "battery-percent",
     "battery-fill",
@@ -150,8 +164,8 @@ function connect(url) {
 }
 
 function subscribeAll() {
-  Object.values(TOPICS).forEach(({ topic, type }) => {
-    ros.subscribe(topic, type, 500);
+  Object.values(TOPICS).forEach(({ topic, type, qos }) => {
+    ros.subscribe(topic, type, 500, qos);
   });
 }
 
@@ -208,6 +222,14 @@ function handleRosMessage(message) {
       state.gpsOdom = message.msg;
       state.gpsAt = Date.now();
       break;
+    case TOPICS.map.topic:
+      state.map = message.msg;
+      state.mapAt = Date.now();
+      break;
+    case TOPICS.localizedOdom.topic:
+      state.localizedOdom = message.msg;
+      state.poseAt = Date.now();
+      break;
     default:
       return;
   }
@@ -258,6 +280,7 @@ function render() {
   renderConnection();
   renderBattery();
   renderGps();
+  renderMap();
   renderHardware();
 }
 
@@ -303,6 +326,235 @@ function renderGps() {
   els.gpsSpeed.textContent = formatUnit(gpsSpeed(state.gpsOdom), "m/s", 2);
   els.gpsHeading.textContent = formatUnit(gpsHeading(state.gpsOdom), "deg", 0);
   setStatusPill(els.gpsStatus, fixClass, fixLabel, accuracy ? `${accuracy.toFixed(2)} m` : "GPS fix");
+}
+
+function renderMap() {
+  const canvas = els.mapView;
+  const wrapper = canvas.parentElement;
+  const rect = wrapper.getBoundingClientRect();
+  const pixelRatio = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (canvas.width !== Math.floor(width * pixelRatio) || canvas.height !== Math.floor(height * pixelRatio)) {
+    canvas.width = Math.floor(width * pixelRatio);
+    canvas.height = Math.floor(height * pixelRatio);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+  }
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  drawMapBackground(ctx, width, height);
+
+  const map = state.map;
+  const pose = state.localizedOdom?.pose?.pose;
+  const bounds = mapBounds(map, pose);
+  els.mapEmpty.hidden = Boolean(bounds);
+
+  if (!bounds) {
+    els.mapAge.textContent = "Waiting for map and pose";
+    els.poseLabel.textContent = "--";
+    return;
+  }
+
+  const transform = mapTransform(bounds, width, height);
+  drawMapGrid(ctx, bounds, transform, width, height);
+  drawAreas(ctx, map, transform);
+  drawDockingStations(ctx, map, transform);
+  if (pose) {
+    drawMower(ctx, pose, transform);
+  }
+
+  const mapText = state.mapAt ? `Map ${ageText(state.mapAt)} ago` : "Waiting for map";
+  const poseText = state.poseAt ? `pose ${ageText(state.poseAt)} ago` : "waiting for pose";
+  els.mapAge.textContent = `${mapText}, ${poseText}`;
+  els.poseLabel.textContent = pose ? formatPose(pose) : "--";
+}
+
+function drawMapBackground(ctx, width, height) {
+  ctx.fillStyle = "#f7f6f0";
+  ctx.fillRect(0, 0, width, height);
+}
+
+function drawMapGrid(ctx, bounds, transform, width, height) {
+  const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  const step = niceGridStep(span / 6);
+  const startX = Math.floor(bounds.minX / step) * step;
+  const startY = Math.floor(bounds.minY / step) * step;
+  ctx.save();
+  ctx.strokeStyle = "#ded8cb";
+  ctx.lineWidth = 1;
+  for (let x = startX; x <= bounds.maxX; x += step) {
+    const point = transform({ x, y: bounds.minY });
+    ctx.beginPath();
+    ctx.moveTo(point.x, 0);
+    ctx.lineTo(point.x, height);
+    ctx.stroke();
+  }
+  for (let y = startY; y <= bounds.maxY; y += step) {
+    const point = transform({ x: bounds.minX, y });
+    ctx.beginPath();
+    ctx.moveTo(0, point.y);
+    ctx.lineTo(width, point.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAreas(ctx, map, transform) {
+  const areas = map?.areas || [];
+  for (const area of areas) {
+    const points = area?.area?.polygon?.points || [];
+    if (points.length < 2) {
+      continue;
+    }
+    const style = areaStyle(Number(area.type));
+    drawPolygon(ctx, points, transform, style.fill, style.stroke);
+  }
+}
+
+function drawPolygon(ctx, points, transform, fill, stroke) {
+  ctx.save();
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    const screen = transform(point);
+    if (index === 0) {
+      ctx.moveTo(screen.x, screen.y);
+    } else {
+      ctx.lineTo(screen.x, screen.y);
+    }
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDockingStations(ctx, map, transform) {
+  const stations = map?.docking_stations || [];
+  for (const station of stations) {
+    const pose = station?.pose?.pose;
+    const approach = station?.approach_pose?.pose;
+    if (!pose?.position) {
+      continue;
+    }
+    const dock = transform(pose.position);
+    ctx.save();
+    if (approach?.position) {
+      const start = transform(approach.position);
+      ctx.strokeStyle = "#7a4f16";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(dock.x, dock.y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#5b3715";
+    ctx.strokeStyle = "#fffdf8";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(dock.x - 6, dock.y - 6, 12, 12);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawMower(ctx, pose, transform) {
+  const position = pose.position;
+  const screen = transform(position);
+  const yaw = quaternionYaw(pose.orientation);
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  ctx.rotate(-yaw);
+  ctx.fillStyle = "#1f6f95";
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, -8);
+  ctx.lineTo(-7, 0);
+  ctx.lineTo(-10, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function mapBounds(map, pose) {
+  const points = [];
+  for (const area of map?.areas || []) {
+    points.push(...(area?.area?.polygon?.points || []));
+  }
+  for (const station of map?.docking_stations || []) {
+    if (station?.pose?.pose?.position) {
+      points.push(station.pose.pose.position);
+    }
+    if (station?.approach_pose?.pose?.position) {
+      points.push(station.approach_pose.pose.position);
+    }
+  }
+  if (pose?.position) {
+    points.push(pose.position);
+  }
+  const finitePoints = points.filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  if (!finitePoints.length) {
+    return null;
+  }
+  const xs = finitePoints.map((point) => Number(point.x));
+  const ys = finitePoints.map((point) => Number(point.y));
+  let minX = Math.min(...xs);
+  let maxX = Math.max(...xs);
+  let minY = Math.min(...ys);
+  let maxY = Math.max(...ys);
+  const padding = Math.max(1, Math.max(maxX - minX, maxY - minY) * 0.08);
+  minX -= padding;
+  maxX += padding;
+  minY -= padding;
+  maxY += padding;
+  return { minX, maxX, minY, maxY };
+}
+
+function mapTransform(bounds, width, height) {
+  const padding = 24;
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanY = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min((width - padding * 2) / spanX, (height - padding * 2) / spanY);
+  const offsetX = (width - spanX * scale) / 2;
+  const offsetY = (height - spanY * scale) / 2;
+  return (point) => ({
+    x: offsetX + (Number(point.x) - bounds.minX) * scale,
+    y: height - offsetY - (Number(point.y) - bounds.minY) * scale,
+  });
+}
+
+function areaStyle(type) {
+  if (type === 0) {
+    return { fill: "rgba(180, 59, 66, 0.20)", stroke: "#b43b42" };
+  }
+  if (type === 1) {
+    return { fill: "rgba(35, 108, 143, 0.16)", stroke: "#236c8f" };
+  }
+  return { fill: "rgba(47, 125, 88, 0.20)", stroke: "#2f7d58" };
+}
+
+function niceGridStep(value) {
+  const power = Math.pow(10, Math.floor(Math.log10(Math.max(value, 1))));
+  const normalized = value / power;
+  if (normalized <= 1) {
+    return power;
+  }
+  if (normalized <= 2) {
+    return power * 2;
+  }
+  if (normalized <= 5) {
+    return power * 5;
+  }
+  return power * 10;
 }
 
 function renderHardware() {
@@ -414,9 +666,23 @@ function gpsHeading(odom) {
   if (!orientation) {
     return NaN;
   }
-  const { x = 0, y = 0, z = 0, w = 1 } = orientation;
-  const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+  const yaw = quaternionYaw(orientation);
   return (yaw * 180) / Math.PI;
+}
+
+function quaternionYaw(orientation = {}) {
+  const { x = 0, y = 0, z = 0, w = 1 } = orientation;
+  return Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+}
+
+function formatPose(pose) {
+  const x = Number(pose.position?.x);
+  const y = Number(pose.position?.y);
+  const yaw = (quaternionYaw(pose.orientation) * 180) / Math.PI;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return "--";
+  }
+  return `${x.toFixed(1)}, ${y.toFixed(1)} m / ${yaw.toFixed(0)} deg`;
 }
 
 function uiButtonLabel(event) {
@@ -508,14 +774,18 @@ class RosbridgeClient {
     return true;
   }
 
-  subscribe(topic, type, throttleRate = 0) {
-    this.send({
+  subscribe(topic, type, throttleRate = 0, qos = null) {
+    const payload = {
       op: "subscribe",
       id: this.id("subscribe"),
       topic,
       type,
       throttle_rate: throttleRate,
-    });
+    };
+    if (qos) {
+      payload.qos = qos;
+    }
+    this.send(payload);
   }
 
   publish(topic, msg) {

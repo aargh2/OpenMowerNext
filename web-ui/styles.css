@@ -211,6 +211,47 @@ main {
   line-height: 1;
 }
 
+.map-section {
+  display: grid;
+}
+
+.map-panel .panel-heading output {
+  font-size: 1rem;
+  align-self: center;
+  color: var(--muted);
+}
+
+.map-canvas-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 340px;
+  overflow: hidden;
+  border: 1px solid #d5cfc3;
+  border-radius: 8px;
+  background: #f7f6f0;
+}
+
+#map-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 740;
+  pointer-events: none;
+}
+
+.map-empty[hidden] {
+  display: none;
+}
+
 .battery-meter {
   height: 18px;
   overflow: hidden;
