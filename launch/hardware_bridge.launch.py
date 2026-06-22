@@ -41,4 +41,9 @@ def generate_launch_description():
                 },
             ],
         ),
+        Node(
+            package='open_mower_next',
+            executable='raspi_system_monitor',
+            output='screen',
+        ),
     ])

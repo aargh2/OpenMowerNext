@@ -1,17 +1,17 @@
 repositories:
   vesc:
     type: git
-    url: https://github.com/sbgisen/vesc.git
+    url: https://github.com/aargh2/vesc.git
     version: jazzy-devel
   ublox_f9p:
     type: git
-    url: https://github.com/jkaflik/ublox_f9p
+    url: https://github.com/aargh2/ublox_f9p
     version: main
   ntrip_client:
     type: git
-    url: https://github.com/LORD-MicroStrain/ntrip_client
+    url: https://github.com/aargh2/ntrip_client
     version: ros2
   fields2cover:
     type: git
-    url: https://github.com/Fields2Cover/Fields2Cover.git
+    url: https://github.com/aargh2/Fields2Cover.git
     version: 0ce7fcce82f3f79f773699448769bcd679c739bc

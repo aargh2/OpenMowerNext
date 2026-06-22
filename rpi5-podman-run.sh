@@ -23,10 +23,11 @@ if [ ! -f "${PODMAN_HARDWARE_TESTS_DIR}/map.geojson" ] && [ -f ".devcontainer/ho
   cp ".devcontainer/home/map.geojson" "${PODMAN_HARDWARE_TESTS_DIR}/map.geojson"
 fi
 
-podman rm -f "${PODMAN_CONTAINER_NAME}" >/dev/null 2>&1 || true
+sudo podman rm -f "${PODMAN_CONTAINER_NAME}" >/dev/null 2>&1 || true
 
-podman run -d \
+sudo podman run -d \
   --name "${PODMAN_CONTAINER_NAME}" \
+  --user root \
   --privileged \
   --network host \
   --ipc host \
