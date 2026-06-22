@@ -112,9 +112,9 @@ docker-promote-rpi: docker-push-rpi-versioned
 	@printf 'Promoted %s to %s\n' "$(DOCKER_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(DOCKER_RPI_STABLE_IMAGE)"
 
 docker-push-web-ui:
-	docker image inspect "$(WEB_UI_RPI_IMAGE)" >/dev/null
-	docker tag "$(WEB_UI_RPI_IMAGE)" "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_IMAGE)"
-	docker push "$(DOCKER_REGISTRY)/$(WEB_UI_RPI_IMAGE)"
+	docker image inspect "$(WEB_UI_IMAGE)" >/dev/null
+	docker tag "$(WEB_UI_IMAGE)" "$(DOCKER_REGISTRY)/$(WEB_UI_IMAGE)"
+	docker push "$(DOCKER_REGISTRY)/$(WEB_UI_IMAGE)"
 
 docker-push-web-ui-rpi-versioned: docker-push-web-ui
 

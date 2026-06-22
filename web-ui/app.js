@@ -128,8 +128,7 @@ function toCamel(id) {
 
 function defaultRosbridgeUrl() {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const hostname = window.location.hostname || "127.0.0.1";
-  return `${protocol}//${hostname}:9090`;
+  return `${protocol}//192.168.1.98:9090`;
 }
 
 function connect(url) {
@@ -363,10 +362,9 @@ function renderGps() {
 function renderMap() {
   const canvas = els.mapView;
   const wrapper = canvas.parentElement;
-  const rect = wrapper.getBoundingClientRect();
   const pixelRatio = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.floor(rect.width));
-  const height = Math.max(1, Math.floor(rect.height));
+  const width = Math.max(1, Math.floor(wrapper.clientWidth));
+  const height = Math.max(1, Math.floor(wrapper.clientHeight));
   if (canvas.width !== Math.floor(width * pixelRatio) || canvas.height !== Math.floor(height * pixelRatio)) {
     canvas.width = Math.floor(width * pixelRatio);
     canvas.height = Math.floor(height * pixelRatio);
