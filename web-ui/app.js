@@ -13,6 +13,10 @@ const TOPICS = {
     qos: { durability: "transient_local", reliability: "reliable", history: "keep_last", depth: 1 },
   },
   localizedOdom: { topic: "/odometry/filtered/map", type: "nav_msgs/msg/Odometry" },
+  rpiTemperature: { topic: "/hardware/raspi/cpu_temperature", type: "sensor_msgs/msg/Temperature" },
+  vescLeft: { topic: "/hardware/vesc/left/status", type: "vesc_msgs/msg/VescStateStamped" },
+  vescRight: { topic: "/hardware/vesc/right/status", type: "vesc_msgs/msg/VescStateStamped" },
+  vescMower: { topic: "/hardware/vesc/mower/status", type: "vesc_msgs/msg/VescStateStamped" },
 };
 
 const BUTTONS = {
@@ -32,6 +36,8 @@ const state = {
   mapAt: null,
   poseAt: null,
   hardwareAt: null,
+  rpiTemperatureAt: null,
+  vescAt: { left: null, right: null, mower: null },
   battery: null,
   gpsFix: null,
   gpsOdom: null,
@@ -42,6 +48,8 @@ const state = {
   emergency: null,
   rain: null,
   uiEvent: null,
+  rpiTemperature: null,
+  vescStatus: { left: null, right: null, mower: null },
 };
 
 const els = {};
@@ -102,6 +110,10 @@ function bindElements() {
     "rain-value",
     "charger-value",
     "button-value",
+    "rpi-temperature",
+    "left-vesc-temperature",
+    "right-vesc-temperature",
+    "mower-vesc-temperature",
     "command-feedback",
     "clear-log",
     "log-list",
@@ -229,6 +241,26 @@ function handleRosMessage(message) {
     case TOPICS.localizedOdom.topic:
       state.localizedOdom = message.msg;
       state.poseAt = Date.now();
+      break;
+    case TOPICS.rpiTemperature.topic:
+      state.rpiTemperature = message.msg;
+      state.rpiTemperatureAt = Date.now();
+      state.hardwareAt = Date.now();
+      break;
+    case TOPICS.vescLeft.topic:
+      state.vescStatus.left = message.msg;
+      state.vescAt.left = Date.now();
+      state.hardwareAt = Date.now();
+      break;
+    case TOPICS.vescRight.topic:
+      state.vescStatus.right = message.msg;
+      state.vescAt.right = Date.now();
+      state.hardwareAt = Date.now();
+      break;
+    case TOPICS.vescMower.topic:
+      state.vescStatus.mower = message.msg;
+      state.vescAt.mower = Date.now();
+      state.hardwareAt = Date.now();
       break;
     default:
       return;
@@ -563,6 +595,10 @@ function renderHardware() {
   els.rainValue.textContent = boolLabel(state.rain, "Detected", "Clear");
   els.chargerValue.textContent = boolLabel(state.charger, "Present", "Not present");
   els.buttonValue.textContent = uiButtonLabel(state.uiEvent);
+  els.rpiTemperature.textContent = temperatureLabel(state.rpiTemperature, state.rpiTemperatureAt);
+  els.leftVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.left, state.vescAt.left);
+  els.rightVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.right, state.vescAt.right);
+  els.mowerVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.mower, state.vescAt.mower);
 
   if (state.emergency === true) {
     setStatusPill(els.emergencyStatus, "bad", "Active", "Emergency");
@@ -692,6 +728,25 @@ function uiButtonLabel(event) {
   const button = Object.values(BUTTONS).find((entry) => entry.id === Number(event.button_id));
   const duration = ["single", "long", "very long"][Number(event.press_duration)] || "unknown";
   return `${button?.label || `Button ${event.button_id}`} (${duration})`;
+}
+
+function temperatureLabel(message, at) {
+  if (!message) {
+    return "--";
+  }
+  const value = formatUnit(message.temperature, "C", 1);
+  return at ? `${value} / ${ageText(at)} ago` : value;
+}
+
+function vescTemperatureLabel(message, at) {
+  if (!message) {
+    return "--";
+  }
+  const status = message.state || {};
+  const motor = formatUnit(status.temperature_motor, "C", 1);
+  const pcb = formatUnit(status.temperature_pcb, "C", 1);
+  const age = at ? ` / ${ageText(at)} ago` : "";
+  return `Motor ${motor} / PCB ${pcb}${age}`;
 }
 
 function boolLabel(value, trueLabel, falseLabel) {

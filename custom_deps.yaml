@@ -14,4 +14,4 @@ repositories:
   fields2cover:
     type: git
     url: https://github.com/aargh2/Fields2Cover.git
-    version: 0ce7fcce82f3f79f773699448769bcd679c739bc
+    version: main
