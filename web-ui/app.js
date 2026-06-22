@@ -594,9 +594,9 @@ function renderHardware() {
   els.chargerValue.textContent = boolLabel(state.charger, "Present", "Not present");
   els.buttonValue.textContent = uiButtonLabel(state.uiEvent);
   els.rpiTemperature.textContent = temperatureLabel(state.rpiTemperature, state.rpiTemperatureAt);
-  els.leftVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.left, state.vescAt.left);
-  els.rightVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.right, state.vescAt.right);
-  els.mowerVescTemperature.textContent = vescTemperatureLabel(state.vescStatus.mower, state.vescAt.mower);
+  els.leftVescTemperature.textContent = vescPcbTemperatureLabel(state.vescStatus.left, state.vescAt.left);
+  els.rightVescTemperature.textContent = vescPcbTemperatureLabel(state.vescStatus.right, state.vescAt.right);
+  els.mowerVescTemperature.textContent = vescMowerTemperatureLabel(state.vescStatus.mower, state.vescAt.mower);
 
   if (state.emergency === true) {
     setStatusPill(els.emergencyStatus, "bad", "Active", "Emergency");
@@ -736,15 +736,25 @@ function temperatureLabel(message, at) {
   return at ? `${value} / ${ageText(at)} ago` : value;
 }
 
-function vescTemperatureLabel(message, at) {
+function vescPcbTemperatureLabel(message, at) {
   if (!message) {
     return "--";
   }
   const status = message.state || {};
-  const motor = formatUnit(status.temperature_motor, "C", 1);
   const pcb = formatUnit(status.temperature_pcb, "C", 1);
   const age = at ? ` / ${ageText(at)} ago` : "";
-  return `Motor ${motor} / PCB ${pcb}${age}`;
+  return `PCB ${pcb}${age}`;
+}
+
+function vescMowerTemperatureLabel(message, at) {
+  if (!message) {
+    return "--";
+  }
+  const status = message.state || {};
+  const pcb = formatUnit(status.temperature_pcb, "C", 1);
+  const motor = formatUnit(status.temperature_motor, "C", 1);
+  const age = at ? ` / ${ageText(at)} ago` : "";
+  return `PCB ${pcb} / Motor ${motor}${age}`;
 }
 
 function boolLabel(value, trueLabel, falseLabel) {

@@ -90,11 +90,14 @@ class VescStatus(Node):
                 print(f"  {name}: no messages received on {topic}")
                 continue
             state = msg.state
-            motor_temp = getattr(state, "temperature_motor", math.nan)
-            print(
-                f"  {name}: pcb_temp={fmt(state.temperature_pcb)} C "
-                f"motor_temp={fmt(motor_temp)} C ({count} msg)"
-            )
+            if name == "mower":
+                motor_temp = getattr(state, "temperature_motor", math.nan)
+                print(
+                    f"  {name}: pcb_temp={fmt(state.temperature_pcb)} C "
+                    f"motor_temp={fmt(motor_temp)} C ({count} msg)"
+                )
+            else:
+                print(f"  {name}: pcb_temp={fmt(state.temperature_pcb)} C ({count} msg)")
 
         if self.last_odom is None:
             print("odom: no messages received")
@@ -123,7 +126,7 @@ def value_at(values, index):
 
 def fmt(value):
     if math.isnan(value):
-        return "nan"
+        return "n/a"
     return f"{value:.4f}"
 
 
